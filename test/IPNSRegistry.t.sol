@@ -9,15 +9,12 @@ contract IPNSRegistryTest is TestBase {
 
     address owner = address(this);
     address treasury = address(0xBEEF);
-    uint256 signerPk = 0xA11CE;
-    address signer;
 
     address alice = address(0xA11CE0);
     address bob = address(0xB0B);
 
     function setUp() public {
-        signer = vm.addr(signerPk);
-        r = new IPNSRegistry(owner, treasury, uint64(block.timestamp + 30 days), signer);
+        r = new IPNSRegistry(owner, treasury);
         vm.deal(alice, 100 ether);
         vm.deal(bob, 100 ether);
     }
@@ -66,38 +63,6 @@ contract IPNSRegistryTest is TestBase {
         vm.prank(alice);
         r.clearSubCID("alice", "blog");
         assertEq(r.resolveSub("alice", "blog"), "bafyPARENT", "sub cleared should fall back");
-    }
-
-    function testGenesisCouponClaimWorks() public {
-        string memory name = "bob";
-        uint8 numYears = 1;
-        uint256 priceWei = 0;
-        uint64 deadline = uint64(block.timestamp + 1 days);
-        bytes memory sig = _signCoupon(bob, "bob", numYears, priceWei, deadline);
-
-        vm.prank(bob);
-        r.claimGenesis{value: 0}(name, numYears, priceWei, deadline, sig);
-
-        assertEq(r.resolve("bob"), "", "cid starts empty");
-        (address nameOwner,,,,, bool active) = r.getRecord("bob");
-        assertEq(nameOwner, bob, "bob should own name");
-        assertTrue(active, "record should be active");
-    }
-
-    function testGenesisCouponReplayReverts() public {
-        string memory name = "replay";
-        uint8 numYears = 1;
-        uint256 priceWei = 0;
-        uint64 deadline = uint64(block.timestamp + 1 days);
-        bytes memory sig = _signCoupon(bob, "replay", numYears, priceWei, deadline);
-
-        vm.prank(bob);
-        r.claimGenesis{value: 0}(name, numYears, priceWei, deadline, sig);
-
-        vm.prank(bob);
-        // After the first claim, the name is no longer available, so this reverts before coupon replay checks.
-        vm.expectRevert(abi.encodeWithSelector(IPNSRegistry.NameUnavailable.selector));
-        r.claimGenesis{value: 0}(name, numYears, priceWei, deadline, sig);
     }
 
     function testGetPriceRejectsEmptyName() public {
@@ -160,9 +125,6 @@ contract IPNSRegistryTest is TestBase {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, bob));
         r.setTreasury(bob);
 
-        vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, bob));
-        r.setCouponSigner(bob);
     }
 
     function testWithdrawSendsToTreasury() public {
@@ -177,87 +139,4 @@ contract IPNSRegistryTest is TestBase {
         assertEq(treasury.balance, beforeTreasury + price, "treasury should receive funds");
     }
 
-    function testClaimGenesisWrongPaymentReverts() public {
-        string memory name = "couponpay";
-        uint8 numYears = 1;
-        uint256 priceWei = 0;
-        uint64 deadline = uint64(block.timestamp + 1 days);
-        bytes memory sig = _signCoupon(bob, "couponpay", numYears, priceWei, deadline);
-
-        vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(IPNSRegistry.IncorrectPayment.selector, uint256(0), uint256(1)));
-        r.claimGenesis{value: 1}(name, numYears, priceWei, deadline, sig);
-    }
-
-    function testClaimGenesisExpiredCouponReverts() public {
-        string memory name = "expiredcoupon";
-        uint8 numYears = 1;
-        uint256 priceWei = 0;
-        uint64 deadline = uint64(block.timestamp + 1);
-        bytes memory sig = _signCoupon(bob, "expiredcoupon", numYears, priceWei, deadline);
-
-        vm.warp(uint256(deadline) + 1);
-        vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(IPNSRegistry.CouponExpired.selector));
-        r.claimGenesis{value: 0}(name, numYears, priceWei, deadline, sig);
-    }
-
-    function testClaimGenesisInvalidSignerReverts() public {
-        string memory name = "badsigner";
-        uint8 numYears = 1;
-        uint256 priceWei = 0;
-        uint64 deadline = uint64(block.timestamp + 1 days);
-        bytes memory badSig = _signCouponWithPk(uint256(0xBADD), bob, "badsigner", numYears, priceWei, deadline);
-
-        vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(IPNSRegistry.InvalidCoupon.selector));
-        r.claimGenesis{value: 0}(name, numYears, priceWei, deadline, badSig);
-    }
-
-    function _signCoupon(
-        address claimer,
-        string memory normalized,
-        uint8 numYears,
-        uint256 priceWei,
-        uint64 deadline
-    ) internal returns (bytes memory) {
-        bytes32 digest = _couponDigest(claimer, normalized, numYears, priceWei, deadline);
-        return _signDigest(signerPk, digest);
-    }
-
-    function _signCouponWithPk(
-        uint256 pk,
-        address claimer,
-        string memory normalized,
-        uint8 numYears,
-        uint256 priceWei,
-        uint64 deadline
-    ) internal returns (bytes memory) {
-        bytes32 digest = _couponDigest(claimer, normalized, numYears, priceWei, deadline);
-        return _signDigest(pk, digest);
-    }
-
-    function _couponDigest(
-        address claimer,
-        string memory normalized,
-        uint8 numYears,
-        uint256 priceWei,
-        uint64 deadline
-    ) internal view returns (bytes32) {
-        bytes32 nameKey = keccak256(bytes(normalized));
-        bytes32 claimTypehash =
-            keccak256("Claim(address claimer,bytes32 nameKey,uint8 years,uint256 priceWei,uint64 deadline)");
-        bytes32 structHash = keccak256(abi.encode(claimTypehash, claimer, nameKey, numYears, priceWei, deadline));
-        bytes32 domainTypehash =
-            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-        bytes32 domainSeparator = keccak256(
-            abi.encode(domainTypehash, keccak256(bytes("IPNSRegistry")), keccak256(bytes("1")), block.chainid, address(r))
-        );
-        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-    }
-
-    function _signDigest(uint256 pk, bytes32 digest) internal returns (bytes memory) {
-        (uint8 v, bytes32 rr, bytes32 ss) = vm.sign(pk, digest);
-        return abi.encodePacked(rr, ss, v);
-    }
 }

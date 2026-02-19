@@ -4,7 +4,7 @@ Apache-2.0 licensed contracts for `ipns`.
 
 ## What’s Here
 
-- `src/IPNSRegistry.sol`: main registry contract (names, renewals, pricing, genesis coupons, subnames)
+- `src/IPNSRegistry.sol`: main registry contract (names, renewals, pricing, subnames)
 - `src/oz/*`: minimal vendored utility contracts (Ownable/ReentrancyGuard/EIP712/ECDSA)
   - Note: in production you likely swap these for full OpenZeppelin once networked dependency install is available.
 
@@ -60,5 +60,3 @@ forge script script/Deploy.s.sol:Deploy --rpc-url http://127.0.0.1:8545 --broadc
 
 - `INITIAL_OWNER` (recommended: multisig/safe)
 - `TREASURY` (recommended: multisig/safe)
-- `COUPON_SIGNER`
-- `GENESIS_END` (unix timestamp)

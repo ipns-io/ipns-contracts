@@ -3,16 +3,13 @@ pragma solidity ^0.8.20;
 
 import "./oz/Ownable.sol";
 import "./oz/ReentrancyGuard.sol";
-import "./oz/ECDSA.sol";
-import "./oz/EIP712.sol";
 
 /// @title IPNSRegistry — On-chain name registry for IPFS content on Base
 /// @author ipns.io
 /// @notice Register human-readable names that resolve to IPFS CIDs
 /// @dev Names are stored normalized (lowercase). Display names preserve original casing.
 
-contract IPNSRegistry is Ownable, ReentrancyGuard, EIP712 {
-    using ECDSA for bytes32;
+contract IPNSRegistry is Ownable, ReentrancyGuard {
 
     // ──────────────────────────────────────────────
     //  Types
@@ -65,16 +62,6 @@ contract IPNSRegistry is Ownable, ReentrancyGuard, EIP712 {
     /// @notice Protocol fee recipient
     address public treasury;
 
-    /// @notice Genesis claim window end (unix timestamp)
-    /// @dev Used to gift names without a permanent admin mint/seize power.
-    uint64 public immutable GENESIS_END;
-
-    /// @notice Authorized signer for genesis claim coupons
-    address public couponSigner;
-
-    /// @notice Prevent replaying the same signed claim
-    mapping(bytes32 => bool) public usedClaims;
-
     // ──────────────────────────────────────────────
     //  Events
     // ──────────────────────────────────────────────
@@ -89,8 +76,6 @@ contract IPNSRegistry is Ownable, ReentrancyGuard, EIP712 {
     event NameUnreserved(string indexed normalizedName);
     event PriceUpdated(uint256 length, uint256 newPrice);
     event TreasuryUpdated(address newTreasury);
-    event CouponSignerUpdated(address newSigner);
-    event GenesisClaimed(string indexed normalizedName, string displayName, address indexed owner, uint64 expires, uint256 priceWei);
 
     // ──────────────────────────────────────────────
     //  Errors
@@ -107,28 +92,15 @@ contract IPNSRegistry is Ownable, ReentrancyGuard, EIP712 {
     error ZeroYears();
     error WithdrawFailed();
     error ZeroAddress();
-    error GenesisEnded();
-    error CouponExpired();
-    error InvalidCoupon();
-    error CouponUsed();
     error EmptyLabel();
 
     // ──────────────────────────────────────────────
     //  Constructor
     // ──────────────────────────────────────────────
 
-    bytes32 private constant CLAIM_TYPEHASH =
-        keccak256("Claim(address claimer,bytes32 nameKey,uint8 years,uint256 priceWei,uint64 deadline)");
-
-    constructor(address _initialOwner, address _treasury, uint64 _genesisEnd, address _couponSigner)
-        Ownable(_initialOwner)
-        EIP712("IPNSRegistry", "1")
-    {
+    constructor(address _initialOwner, address _treasury) Ownable(_initialOwner) {
         if (_treasury == address(0)) revert ZeroAddress();
-        if (_couponSigner == address(0)) revert ZeroAddress();
         treasury = _treasury;
-        GENESIS_END = _genesisEnd;
-        couponSigner = _couponSigner;
 
         // Default pricing in wei (targeting ~USD equivalent at ~$3000 ETH)
         // These are starting points — update via setPriceByLength()
@@ -253,50 +225,6 @@ contract IPNSRegistry is Ownable, ReentrancyGuard, EIP712 {
         record.expires = currentExpiry + (REGISTRATION_PERIOD * numYears);
 
         emit NameRenewed(normalized, record.owner, record.expires);
-    }
-
-    // ──────────────────────────────────────────────
-    //  Genesis Claims (Coupon-Based Gifts)
-    // ──────────────────────────────────────────────
-
-    /// @notice Register a name during genesis with a signed coupon (can be free/discounted)
-    /// @dev Avoids a permanent admin mint/seize power. Only valid until GENESIS_END.
-    /// @param name The name to register (any casing)
-    /// @param numYears Number of years (1+)
-    /// @param priceWei Exact payment required by coupon (can be 0)
-    /// @param deadline Coupon expiry timestamp
-    /// @param signature EIP-712 signature from couponSigner
-    function claimGenesis(
-        string calldata name,
-        uint8 numYears,
-        uint256 priceWei,
-        uint64 deadline,
-        bytes calldata signature
-    ) external payable nonReentrant {
-        if (block.timestamp > GENESIS_END) revert GenesisEnded();
-        if (block.timestamp > deadline) revert CouponExpired();
-        if (numYears == 0) revert ZeroYears();
-
-        string memory normalized = _normalize(name);
-        bytes32 key = _nameKey(normalized);
-        uint256 len = bytes(normalized).length;
-
-        _requireValidLen(len);
-        if (reserved[key]) revert NameReservedError();
-
-        _requireAvailable(key);
-
-        uint256 fullPrice = _getPrice(len) * numYears;
-        // Coupon can discount, but cannot increase required payment above base schedule.
-        if (priceWei > fullPrice) revert InvalidCoupon();
-        if (msg.value != priceWei) revert IncorrectPayment(priceWei, msg.value);
-
-        _verifyAndConsumeCoupon(msg.sender, key, numYears, priceWei, deadline, signature);
-
-        uint64 expiry = uint64(block.timestamp) + (REGISTRATION_PERIOD * numYears);
-        _writeRecord(key, msg.sender, name, expiry);
-
-        emit GenesisClaimed(normalized, name, msg.sender, expiry, priceWei);
     }
 
     // ──────────────────────────────────────────────
@@ -542,13 +470,6 @@ contract IPNSRegistry is Ownable, ReentrancyGuard, EIP712 {
         emit TreasuryUpdated(_treasury);
     }
 
-    /// @notice Update coupon signer (used only for genesis coupons)
-    function setCouponSigner(address _signer) external onlyOwner {
-        if (_signer == address(0)) revert ZeroAddress();
-        couponSigner = _signer;
-        emit CouponSignerUpdated(_signer);
-    }
-
     /// @notice Withdraw accumulated fees to treasury
     function withdraw() external onlyOwner {
         uint256 balance = address(this).balance;
@@ -617,22 +538,6 @@ contract IPNSRegistry is Ownable, ReentrancyGuard, EIP712 {
         rec.displayName = displayName;
         rec.registered = uint64(block.timestamp);
         rec.expires = expiry;
-    }
-
-    function _verifyAndConsumeCoupon(
-        address claimer,
-        bytes32 nameKey,
-        uint8 numYears,
-        uint256 priceWei,
-        uint64 deadline,
-        bytes calldata signature
-    ) internal {
-        bytes32 structHash = keccak256(abi.encode(CLAIM_TYPEHASH, claimer, nameKey, numYears, priceWei, deadline));
-        bytes32 digest = _hashTypedDataV4(structHash);
-        if (usedClaims[digest]) revert CouponUsed();
-        address recovered = digest.recover(signature);
-        if (recovered != couponSigner) revert InvalidCoupon();
-        usedClaims[digest] = true;
     }
 
     /// @notice Send ETH safely

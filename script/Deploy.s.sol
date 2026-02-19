@@ -22,11 +22,9 @@ contract Deploy {
     function run() external returns (IPNSRegistry deployed) {
         address initialOwner = vm.envAddress("INITIAL_OWNER");
         address treasury = vm.envAddress("TREASURY");
-        address couponSigner = vm.envAddress("COUPON_SIGNER");
-        uint256 genesisEnd = vm.envUint("GENESIS_END"); // unix seconds
 
         vm.startBroadcast();
-        deployed = new IPNSRegistry(initialOwner, treasury, uint64(genesisEnd), couponSigner);
+        deployed = new IPNSRegistry(initialOwner, treasury);
         vm.stopBroadcast();
     }
 }
