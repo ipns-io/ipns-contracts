@@ -120,8 +120,8 @@ contract IPNSRegistry is Ownable, ReentrancyGuard, EIP712 {
     bytes32 private constant CLAIM_TYPEHASH =
         keccak256("Claim(address claimer,bytes32 nameKey,uint8 years,uint256 priceWei,uint64 deadline)");
 
-    constructor(address _treasury, uint64 _genesisEnd, address _couponSigner)
-        Ownable(msg.sender)
+    constructor(address _initialOwner, address _treasury, uint64 _genesisEnd, address _couponSigner)
+        Ownable(_initialOwner)
         EIP712("IPNSRegistry", "1")
     {
         if (_treasury == address(0)) revert ZeroAddress();
@@ -472,6 +472,7 @@ contract IPNSRegistry is Ownable, ReentrancyGuard, EIP712 {
     function getPrice(string calldata name, uint8 numYears) external view returns (uint256 price) {
         string memory normalized = _normalize(name);
         uint256 len = bytes(normalized).length;
+        _requireValidLen(len);
         return _getPrice(len) * numYears;
     }
 

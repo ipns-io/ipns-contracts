@@ -53,3 +53,12 @@ anvil
 ```bash
 forge script script/Deploy.s.sol:Deploy --rpc-url http://127.0.0.1:8545 --broadcast
 ```
+
+## Mainnet Deployment Inputs
+
+`script/Deploy.s.sol` requires:
+
+- `INITIAL_OWNER` (recommended: multisig/safe)
+- `TREASURY` (recommended: multisig/safe)
+- `COUPON_SIGNER`
+- `GENESIS_END` (unix timestamp)
