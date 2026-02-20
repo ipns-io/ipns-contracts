@@ -62,6 +62,9 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     /// @notice Protocol fee recipient
     address public treasury;
 
+    /// @notice Emergency write brake. When true, user write actions are halted.
+    bool public paused;
+
     // ──────────────────────────────────────────────
     //  Events
     // ──────────────────────────────────────────────
@@ -76,6 +79,8 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     event NameUnreserved(string indexed normalizedName);
     event PriceUpdated(uint256 length, uint256 newPrice);
     event TreasuryUpdated(address newTreasury);
+    event Paused(address indexed by);
+    event Unpaused(address indexed by);
 
     // ──────────────────────────────────────────────
     //  Errors
@@ -93,14 +98,16 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     error WithdrawFailed();
     error ZeroAddress();
     error EmptyLabel();
+    error ContractPaused();
 
     // ──────────────────────────────────────────────
     //  Constructor
     // ──────────────────────────────────────────────
 
-    constructor(address _initialOwner, address _treasury) Ownable(_initialOwner) {
+    constructor(address _initialOwner, address _treasury, bool _startPaused) Ownable(_initialOwner) {
         if (_treasury == address(0)) revert ZeroAddress();
         treasury = _treasury;
+        paused = _startPaused;
 
         // Default pricing in wei (targeting ~USD equivalent at ~$3000 ETH)
         // These are starting points — update via setPriceByLength()
@@ -167,6 +174,11 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
         _reserve("localhost");
     }
 
+    modifier whenNotPaused() {
+        if (paused) revert ContractPaused();
+        _;
+    }
+
     // ──────────────────────────────────────────────
     //  Registration
     // ──────────────────────────────────────────────
@@ -174,7 +186,7 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     /// @notice Register a name for one or more years
     /// @param name The name to register (any casing)
     /// @param numYears Number of years to register (1+)
-    function register(string calldata name, uint8 numYears) external payable nonReentrant {
+    function register(string calldata name, uint8 numYears) external payable nonReentrant whenNotPaused {
         if (numYears == 0) revert ZeroYears();
 
         string memory normalized = _normalize(name);
@@ -201,7 +213,7 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     /// @dev Anyone can renew any name (gifting renewals is allowed)
     /// @param name The normalized name to renew
     /// @param numYears Number of years to add
-    function renew(string calldata name, uint8 numYears) external payable nonReentrant {
+    function renew(string calldata name, uint8 numYears) external payable nonReentrant whenNotPaused {
         if (numYears == 0) revert ZeroYears();
 
         string memory normalized = _normalize(name);
@@ -234,7 +246,7 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     /// @notice Set the IPFS CID for a name you own
     /// @param name The name (any casing, will be normalized)
     /// @param cid The IPFS CID to point to
-    function setCID(string calldata name, string calldata cid) external {
+    function setCID(string calldata name, string calldata cid) external whenNotPaused {
         string memory normalized = _normalize(name);
         bytes32 key = _nameKey(normalized);
         Record storage record = names[key];
@@ -251,7 +263,7 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     /// @param name Parent name (any casing, will be normalized)
     /// @param label Subname label (any casing, will be normalized). No dots.
     /// @param cid IPFS CID to point the subname at
-    function setSubCID(string calldata name, string calldata label, string calldata cid) external {
+    function setSubCID(string calldata name, string calldata label, string calldata cid) external whenNotPaused {
         string memory parentNorm = _normalize(name);
         bytes32 parentKey = _nameKey(parentNorm);
         Record storage parent = names[parentKey];
@@ -271,7 +283,7 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     }
 
     /// @notice Clear a subname CID under a name you own
-    function clearSubCID(string calldata name, string calldata label) external {
+    function clearSubCID(string calldata name, string calldata label) external whenNotPaused {
         string memory parentNorm = _normalize(name);
         bytes32 parentKey = _nameKey(parentNorm);
         Record storage parent = names[parentKey];
@@ -289,7 +301,7 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
 
     /// @notice Update the display name (casing only — must normalize to same key)
     /// @param name New display casing
-    function setDisplayName(string calldata name) external {
+    function setDisplayName(string calldata name) external whenNotPaused {
         string memory normalized = _normalize(name);
         bytes32 key = _nameKey(normalized);
         Record storage record = names[key];
@@ -307,7 +319,7 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     /// @notice Transfer ownership of a name
     /// @param name The name to transfer
     /// @param to New owner address
-    function transfer(string calldata name, address to) external {
+    function transfer(string calldata name, address to) external whenNotPaused {
         if (to == address(0)) revert TransferToZeroAddress();
 
         string memory normalized = _normalize(name);
@@ -468,6 +480,22 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
         if (_treasury == address(0)) revert ZeroAddress();
         treasury = _treasury;
         emit TreasuryUpdated(_treasury);
+    }
+
+    /// @notice Pause user write actions (register/renew/content/transfer)
+    function pause() external onlyOwner {
+        if (!paused) {
+            paused = true;
+            emit Paused(msg.sender);
+        }
+    }
+
+    /// @notice Unpause user write actions
+    function unpause() external onlyOwner {
+        if (paused) {
+            paused = false;
+            emit Unpaused(msg.sender);
+        }
     }
 
     /// @notice Withdraw accumulated fees to treasury

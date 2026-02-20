@@ -60,3 +60,24 @@ forge script script/Deploy.s.sol:Deploy --rpc-url http://127.0.0.1:8545 --broadc
 
 - `INITIAL_OWNER` (recommended: multisig/safe)
 - `TREASURY` (recommended: multisig/safe)
+- `START_PAUSED` (optional, defaults to `1`)
+  - `1` = deploy paused (recommended for first mainnet launch)
+  - `0` = deploy unpaused
+
+### Pause Model
+
+- `pause()` / `unpause()` are `onlyOwner`.
+- While paused, user write paths are blocked:
+  - `register`
+  - `renew`
+  - `setCID`
+  - `setSubCID`
+  - `clearSubCID`
+  - `setDisplayName`
+  - `transfer`
+- Read paths remain available:
+  - `resolve`
+  - `resolveSub`
+  - `isAvailable`
+  - `getPrice`
+  - `getRecord`

@@ -14,7 +14,7 @@ contract IPNSRegistryTest is TestBase {
     address bob = address(0xB0B);
 
     function setUp() public {
-        r = new IPNSRegistry(owner, treasury);
+        r = new IPNSRegistry(owner, treasury, false);
         vm.deal(alice, 100 ether);
         vm.deal(bob, 100 ether);
     }
@@ -125,6 +125,39 @@ contract IPNSRegistryTest is TestBase {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, bob));
         r.setTreasury(bob);
 
+    }
+
+    function testPauseBlocksWritePaths() public {
+        r.pause();
+
+        uint256 price = r.getPrice("alice", 1);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IPNSRegistry.ContractPaused.selector));
+        r.register{value: price}("alice", 1);
+    }
+
+    function testPauseStillAllowsReads() public {
+        uint256 price = r.getPrice("alice", 1);
+        vm.prank(alice);
+        r.register{value: price}("alice", 1);
+        vm.prank(alice);
+        r.setCID("alice", "bafyREAD");
+
+        r.pause();
+        assertEq(r.resolve("alice"), "bafyREAD", "reads should remain available while paused");
+        assertEq(r.isAvailable("alice") ? 1 : 0, 0, "availability read should still function");
+    }
+
+    function testUnpauseRestoresWritePaths() public {
+        r.pause();
+        r.unpause();
+
+        uint256 price = r.getPrice("alice", 1);
+        vm.prank(alice);
+        r.register{value: price}("alice", 1);
+        vm.prank(alice);
+        r.setCID("alice", "bafyOK");
+        assertEq(r.resolve("alice"), "bafyOK", "writes should work after unpause");
     }
 
     function testWithdrawSendsToTreasury() public {

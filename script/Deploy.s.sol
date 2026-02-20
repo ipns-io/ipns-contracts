@@ -10,6 +10,7 @@ interface Vm {
 
     function envAddress(string calldata name) external returns (address);
     function envUint(string calldata name) external returns (uint256);
+    function envOr(string calldata name, uint256 defaultValue) external returns (uint256);
 }
 
 library VmAddr {
@@ -22,9 +23,10 @@ contract Deploy {
     function run() external returns (IPNSRegistry deployed) {
         address initialOwner = vm.envAddress("INITIAL_OWNER");
         address treasury = vm.envAddress("TREASURY");
+        bool startPaused = vm.envOr("START_PAUSED", uint256(1)) != 0;
 
         vm.startBroadcast();
-        deployed = new IPNSRegistry(initialOwner, treasury);
+        deployed = new IPNSRegistry(initialOwner, treasury, startPaused);
         vm.stopBroadcast();
     }
 }
