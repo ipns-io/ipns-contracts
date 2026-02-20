@@ -13,8 +13,7 @@ library ECDSA {
 
     // secp256k1n/2 for malleability check.
     // Source: https://github.com/ethereum/go-ethereum/blob/master/crypto/secp256k1/secp256k1.go
-    uint256 private constant _SECP256K1N_HALF =
-        0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
+    uint256 private constant _SECP256K1N_HALF = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
 
     function recover(bytes32 hash, bytes memory signature) internal pure returns (address) {
         (address recovered, RecoverError err) = tryRecover(hash, signature);
@@ -39,11 +38,7 @@ library ECDSA {
         return (address(0), RecoverError.InvalidSignatureLength);
     }
 
-    function tryRecover(bytes32 hash, uint8 v, bytes32 r, bytes32 s)
-        internal
-        pure
-        returns (address, RecoverError)
-    {
+    function tryRecover(bytes32 hash, uint8 v, bytes32 r, bytes32 s) internal pure returns (address, RecoverError) {
         // EIP-2: reject high-s malleability.
         if (uint256(s) > _SECP256K1N_HALF) return (address(0), RecoverError.InvalidSignatureS);
         if (v != 27 && v != 28) return (address(0), RecoverError.InvalidSignatureV);

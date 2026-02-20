@@ -92,13 +92,13 @@ contract IPNSRegistryTest is TestBase {
         vm.prank(alice);
         r.register{value: price}("renewme", 1);
 
-        (, , , , uint64 oldExpiry, ) = r.getRecord("renewme");
+        (,,,, uint64 oldExpiry,) = r.getRecord("renewme");
         vm.warp(uint256(oldExpiry) + 1);
 
         vm.prank(bob);
         r.renew{value: price}("renewme", 1);
 
-        (, , , , uint64 newExpiry, ) = r.getRecord("renewme");
+        (,,,, uint64 newExpiry,) = r.getRecord("renewme");
         assertTrue(newExpiry > oldExpiry, "expiry should move forward");
         assertTrue(newExpiry >= uint64(block.timestamp + 365 days), "grace renewal should extend from now");
     }
@@ -108,7 +108,7 @@ contract IPNSRegistryTest is TestBase {
         vm.prank(alice);
         r.register{value: price}("late", 1);
 
-        (, , , , uint64 expiry, ) = r.getRecord("late");
+        (,,,, uint64 expiry,) = r.getRecord("late");
         vm.warp(uint256(expiry) + 90 days + 1);
 
         vm.prank(bob);
@@ -124,7 +124,6 @@ contract IPNSRegistryTest is TestBase {
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, bob));
         r.setTreasury(bob);
-
     }
 
     function testPauseBlocksWritePaths() public {
@@ -171,5 +170,4 @@ contract IPNSRegistryTest is TestBase {
         assertEq(address(r).balance, 0, "withdraw should empty contract balance");
         assertEq(treasury.balance, beforeTreasury + price, "treasury should receive funds");
     }
-
 }

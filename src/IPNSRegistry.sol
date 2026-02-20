@@ -10,23 +10,22 @@ import "./oz/ReentrancyGuard.sol";
 /// @dev Names are stored normalized (lowercase). Display names preserve original casing.
 
 contract IPNSRegistry is Ownable, ReentrancyGuard {
-
     // ──────────────────────────────────────────────
     //  Types
     // ──────────────────────────────────────────────
 
     struct Record {
         address owner;
-        string  cid;            // IPFS CID (e.g. "bafybei...")
-        string  displayName;    // Original casing (e.g. "Alice")
-        uint64  registered;     // Timestamp of registration
-        uint64  expires;        // Timestamp of expiration
+        string cid; // IPFS CID (e.g. "bafybei...")
+        string displayName; // Original casing (e.g. "Alice")
+        uint64 registered; // Timestamp of registration
+        uint64 expires; // Timestamp of expiration
     }
 
     /// @dev Subname record. v1 is parent-controlled; `owner` is reserved for future delegation.
     struct SubRecord {
         address owner; // v2+: optional delegated owner; v1 leaves this as address(0)
-        string  cid;   // IPFS CID (e.g. "bafybei...")
+        string cid; // IPFS CID (e.g. "bafybei...")
     }
 
     // ──────────────────────────────────────────────
@@ -111,10 +110,10 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
 
         // Default pricing in wei (targeting ~USD equivalent at ~$3000 ETH)
         // These are starting points — update via setPriceByLength()
-        priceByLength[1] = 0.017 ether;   // ~$50 — single char
-        priceByLength[2] = 0.0083 ether;  // ~$25 — two chars
-        priceByLength[3] = 0.0033 ether;  // ~$10 — three chars
-        priceByLength[4] = 0.0017 ether;  // ~$5  — four chars
+        priceByLength[1] = 0.017 ether; // ~$50 — single char
+        priceByLength[2] = 0.0083 ether; // ~$25 — two chars
+        priceByLength[3] = 0.0033 ether; // ~$10 — three chars
+        priceByLength[4] = 0.0017 ether; // ~$5  — four chars
         priceByLength[5] = 0.00033 ether; // ~$1  — five+ chars
 
         // Reserve protocol names
@@ -375,10 +374,11 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
     }
 
     /// @notice Get subname record (reserved fields for future delegation)
-    function getSubRecord(string calldata name, string calldata label) external view returns (
-        address owner,
-        string memory cid
-    ) {
+    function getSubRecord(string calldata name, string calldata label)
+        external
+        view
+        returns (address owner, string memory cid)
+    {
         string memory parentNorm = _normalize(name);
         bytes32 parentKey = _nameKey(parentNorm);
         string memory labelNorm = _normalize(label);
@@ -418,14 +418,18 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
 
     /// @notice Get full record for a name
     /// @param name The name to look up
-    function getRecord(string calldata name) external view returns (
-        address owner,
-        string memory cid,
-        string memory displayName,
-        uint64 registered,
-        uint64 expires,
-        bool active
-    ) {
+    function getRecord(string calldata name)
+        external
+        view
+        returns (
+            address owner,
+            string memory cid,
+            string memory displayName,
+            uint64 registered,
+            uint64 expires,
+            bool active
+        )
+    {
         string memory normalized = _normalize(name);
         bytes32 key = _nameKey(normalized);
         Record storage record = names[key];
@@ -570,7 +574,7 @@ contract IPNSRegistry is Ownable, ReentrancyGuard {
 
     /// @notice Send ETH safely
     function _sendETH(address to, uint256 amount) internal {
-        (bool success, ) = to.call{value: amount}("");
+        (bool success,) = to.call{value: amount}("");
         if (!success) revert WithdrawFailed();
     }
 
